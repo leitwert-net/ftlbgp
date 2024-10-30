@@ -1,0 +1,173 @@
+# -*- coding: utf-8 -*-
+# pylint: disable=I0011,I0020,I0021,I0023
+# pylint: disable=W0149,W0717,R0902,R0904,R0911,R0912,R0913,R0914,R0915,R1702,R1734,R1735,R2044,R6103,C0103,C0209,C2001
+# pylint: enable=I0011
+# flake8: noqa
+""" ftlbgp
+Copyright (C) 2014-2024 Leitwert GmbH
+
+This software is distributed under the terms of the MIT license.
+It can be found in the LICENSE file or at https://opensource.org/licenses/MIT.
+
+Author Johann SCHLAMP <schlamp@leitwert.net>
+"""
+
+#################
+# MRT CONSTANTS #
+#################
+
+# Byte sizes
+MRT_HEADER_BYTES = 12     # Defined in RFC6396
+MRT_DATA_BYTES   = 65535  # Defined in RFC8654
+MRT_DATA_BYTES  *= 16     # RIB entries might be larger
+
+# MRT types
+MRT_NULL          = 0   # Deprecated in RFC6396
+MRT_START         = 1   # Deprecated in RFC6396
+MRT_DIE           = 2   # Deprecated in RFC6396
+MRT_I_AM_DEAD     = 3   # Deprecated in RFC6396
+MRT_PEER_DOWN     = 4   # Deprecated in RFC6396
+MRT_BGP           = 5   # Deprecated in RFC6396
+MRT_RIP           = 6   # Deprecated in RFC6396
+MRT_IDRP          = 7   # Deprecated in RFC6396
+MRT_RIPNG         = 8   # Deprecated in RFC6396
+MRT_BGP4PLUS      = 9   # Deprecated in RFC6396
+MRT_BGP4PLUS_01   = 10  # Deprecated in RFC6396
+MRT_OSPFV2        = 11  # Defined in RFC6396
+MRT_TABLE_DUMP    = 12  # Defined in RFC6396
+MRT_TABLE_DUMP_V2 = 13  # Defined in RFC6396
+MRT_BGP4MP        = 16  # Defined in RFC6396
+MRT_BGP4MP_ET     = 17  # Defined in RFC6396
+MRT_ISIS          = 32  # Defined in RFC6396
+MRT_ISIS_ET       = 33  # Defined in RFC6396
+MRT_OSPFV3        = 48  # Defined in RFC6396
+MRT_OSPFV3_ET     = 49  # Defined in RFC6396
+
+# BGP subtypes (obsolete)
+MRT_BGP_NULL         = 0  # Deprecated in RFC6396
+MRT_BGP_UPDATE       = 1  # Deprecated in RFC6396
+MRT_BGP_PREF_UPDATE  = 2  # Deprecated in RFC6396
+MRT_BGP_STATE_CHANGE = 3  # Deprecated in RFC6396
+MRT_BGP_SYNC         = 4  # Deprecated in RFC6396
+MRT_BGP_OPEN         = 5  # Deprecated in RFC6396
+MRT_BGP_NOTIFY       = 6  # Deprecated in RFC6396
+MRT_BGP_KEEPALIVE    = 7  # Deprecated in RFC6396
+
+# BGP4MP/BGP4MP_ET subtypes
+MRT_BGP4MP_STATE_CHANGE              = 0   # Defined in RFC6396
+MRT_BGP4MP_MESSAGE                   = 1   # Defined in RFC6396
+MRT_BGP4MP_ENTRY                     = 2   # Deprecated in RFC6396
+MRT_BGP4MP_SNAPSHOT                  = 3   # Deprecated in RFC6396
+MRT_BGP4MP_MESSAGE_AS4               = 4   # Defined in RFC6396
+MRT_BGP4MP_STATE_CHANGE_AS4          = 5   # Defined in RFC6396
+MRT_BGP4MP_MESSAGE_LOCAL             = 6   # Defined in RFC6396
+MRT_BGP4MP_MESSAGE_AS4_LOCAL         = 7   # Defined in RFC6396
+MRT_BGP4MP_MESSAGE_ADDPATH           = 8   # Defined in RFC8050
+MRT_BGP4MP_MESSAGE_AS4_ADDPATH       = 9   # Defined in RFC8050
+MRT_BGP4MP_MESSAGE_LOCAL_ADDPATH     = 10  # Defined in RFC8050
+MRT_BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH = 11  # Defined in RFC8050
+
+# TABLE_DUMP_V2 subtypes
+MRT_TABLE_DUMP_V2_PEER_INDEX_TABLE           = 1   # Defined in RFC6396
+MRT_TABLE_DUMP_V2_RIB_IPV4_UNICAST           = 2   # Defined in RFC6396
+MRT_TABLE_DUMP_V2_RIB_IPV4_MULTICAST         = 3   # Defined in RFC6396
+MRT_TABLE_DUMP_V2_RIB_IPV6_UNICAST           = 4   # Defined in RFC6396
+MRT_TABLE_DUMP_V2_RIB_IPV6_MULTICAST         = 5   # Defined in RFC6396
+MRT_TABLE_DUMP_V2_RIB_GENERIC                = 6   # Defined in RFC6396
+MRT_TABLE_DUMP_V2_GEO_PEER_TABLE             = 7   # Defined in RFC6397
+MRT_TABLE_DUMP_V2_RIB_IPV4_UNICAST_ADDPATH   = 8   # Defined in RFC8050
+MRT_TABLE_DUMP_V2_RIB_IPV4_MULTICAST_ADDPATH = 9   # Defined in RFC8050
+MRT_TABLE_DUMP_V2_RIB_IPV6_UNICAST_ADDPATH   = 10  # Defined in RFC8050
+MRT_TABLE_DUMP_V2_RIB_IPV6_MULTICAST_ADDPATH = 11  # Defined in RFC8050
+MRT_TABLE_DUMP_V2_RIB_GENERIC_ADDPATH        = 12  # Defined in RFC8050
+
+#####################
+# MRT CONSTANT SETS #
+#####################
+
+# Valid MRT types
+MRT_VALID = {
+    MRT_NULL,
+    MRT_START,
+    MRT_DIE,
+    MRT_I_AM_DEAD,
+    MRT_PEER_DOWN,
+    MRT_BGP,
+    MRT_RIP,
+    MRT_IDRP,
+    MRT_RIPNG,
+    MRT_BGP4PLUS,
+    MRT_BGP4PLUS_01,
+    MRT_OSPFV2,
+    MRT_TABLE_DUMP,
+    MRT_TABLE_DUMP_V2,
+    MRT_BGP4MP,
+    MRT_BGP4MP_ET,
+    MRT_ISIS,
+    MRT_ISIS_ET,
+    MRT_OSPFV3,
+    MRT_OSPFV3_ET,
+}
+
+# BGP4MP/BGP4MP_ET subtypes (2-byte ASN)
+MRT_BGP4MP_ENTRY_ANY = {
+    MRT_BGP4MP_STATE_CHANGE,
+    MRT_BGP4MP_MESSAGE,
+    MRT_BGP4MP_MESSAGE_LOCAL,
+    MRT_BGP4MP_MESSAGE_ADDPATH,
+    MRT_BGP4MP_MESSAGE_LOCAL_ADDPATH,
+}
+
+# BGP4MP/BGP4MP_ET subtypes (4-byte ASN)
+MRT_BGP4MP_ENTRY_AS4_ANY = {
+    MRT_BGP4MP_STATE_CHANGE_AS4,
+    MRT_BGP4MP_MESSAGE_AS4,
+    MRT_BGP4MP_MESSAGE_AS4_LOCAL,
+    MRT_BGP4MP_MESSAGE_AS4_ADDPATH,
+    MRT_BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH,
+}
+
+# BGP4MP/BGP4MP_ET subtypes (ADD-PATH)
+MRT_BGP4MP_ENTRY_ADDPATH_ANY = {
+    MRT_BGP4MP_MESSAGE_ADDPATH,
+    MRT_BGP4MP_MESSAGE_AS4_ADDPATH,
+    MRT_BGP4MP_MESSAGE_LOCAL_ADDPATH,
+    MRT_BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH,
+}
+
+# TABLE_DUMP_V2 subtypes (ADD-PATH)
+MRT_TABLE_DUMP_V2_RIB_ADDPATH_ANY = {
+    MRT_TABLE_DUMP_V2_RIB_IPV4_UNICAST_ADDPATH,
+    MRT_TABLE_DUMP_V2_RIB_IPV4_MULTICAST_ADDPATH,
+    MRT_TABLE_DUMP_V2_RIB_IPV6_UNICAST_ADDPATH,
+    MRT_TABLE_DUMP_V2_RIB_IPV6_MULTICAST_ADDPATH,
+    MRT_TABLE_DUMP_V2_RIB_GENERIC_ADDPATH,
+}
+
+# TABLE_DUMP_V2 subtypes (IPv4)
+MRT_TABLE_DUMP_V2_RIB_IPV4_ANY = {
+    MRT_TABLE_DUMP_V2_RIB_IPV4_UNICAST,
+    MRT_TABLE_DUMP_V2_RIB_IPV4_MULTICAST,
+    MRT_TABLE_DUMP_V2_RIB_IPV4_UNICAST_ADDPATH,
+    MRT_TABLE_DUMP_V2_RIB_IPV4_MULTICAST_ADDPATH,
+}
+
+# TABLE_DUMP_V2 subtypes (IPv6)
+MRT_TABLE_DUMP_V2_RIB_IPV6_ANY = {
+    MRT_TABLE_DUMP_V2_RIB_IPV6_UNICAST,
+    MRT_TABLE_DUMP_V2_RIB_IPV6_MULTICAST,
+    MRT_TABLE_DUMP_V2_RIB_IPV6_UNICAST_ADDPATH,
+    MRT_TABLE_DUMP_V2_RIB_IPV6_MULTICAST_ADDPATH,
+}
+
+# TABLE_DUMP_V2 subtypes (generic)
+MRT_TABLE_DUMP_V2_RIB_GENERIC_ANY = {
+    MRT_TABLE_DUMP_V2_RIB_GENERIC,
+    MRT_TABLE_DUMP_V2_RIB_GENERIC_ADDPATH,
+}
+
+# TABLE_DUMP_V2 subtypes (AFI/SAFI-specific)
+MRT_TABLE_DUMP_V2_RIB_SPECIFIC_ANY = (
+    MRT_TABLE_DUMP_V2_RIB_IPV4_ANY |
+    MRT_TABLE_DUMP_V2_RIB_IPV6_ANY
+)

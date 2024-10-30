@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ftlbgp"
+description = "A Python parser for BGP data in MRT or looking glass format"
+authors = [{name = "Johann SCHLAMP", email = "schlamp@leitwert.net"}]
+keywords = ["MRT", "BGP", "parser"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Telecommunications Industry",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+readme = "README.md"
+requires-python = ">=3.6"
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/leitwert-net/ftlbgp"
+Issues = "https://github.com/leitwert-net/ftlbgp/issues"
+
+[tool.hatch.version]
+path = "src/ftlbgp/version.py"

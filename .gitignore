@@ -1,0 +1,26 @@
+# Python files
+__pycache__/
+*.pyc
+*.pyd
+*.pyo
+
+# Archive files
+*.bz2
+*.gz
+*.zip
+*.pickle
+
+# Temp files
+*.swo
+*.swp
+*.swpx
+*.swx
+*.tmp
+
+# Log files
+*.log
+/log/
+
+# Binaries
+/bin/
+/dist/
