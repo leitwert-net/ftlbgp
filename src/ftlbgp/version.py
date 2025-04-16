@@ -11,4 +11,4 @@ It can be found in the LICENSE file or at https://opensource.org/licenses/MIT.
 Author Johann SCHLAMP <schlamp@leitwert.net>
 """
 
-__version__ = '1.0.3'
+__version__ = '1.0.4'

@@ -88,40 +88,45 @@ HEADER_REGEX_ALT = re.compile(r'^\s+P\s+Pref\s+Time\s+Destination\s+Next Hop\s+I
 
 # Route parts
 ROUTE_ASHOPS = r'(?:(?:\d+\s?)|(?:{(?:\d+,?)+}\s?))'
-ROUTE_STATUS = '[sdh*>=irSR ]'
-ROUTE_ORIGIN = '[ie?]'
-ROUTE_STATUS_ALT = '[s*>i ]'
-ROUTE_ORIGIN_ALT = '[ie?a]'
+ROUTE_STATUS = 'sdhu*>=irSR'
+ROUTE_ORIGIN = 'ie?'
+ROUTE_STATUS_ALT = 's*>i'
+ROUTE_ORIGIN_ALT = 'ie?a'
 
 # Route regex
 ROUTE_REGEX = re.compile(
-    r'^{route_status}{{3,4}}'    # Route status  (ignored, required)
-    r'(\S+)?\s+'                 # Prefix        (group 1, optional)
-    r'(\S+)\s+'                  # Next hop      (group 2, required)
-    r'\s{{1,7}}(\d+)?'           # MED metric    (group 3, optional)
-    r'\s{{1,7}}(\d+)?'           # Local-pref    (group 4, optional)
-    r'\s{{1,7}}(?:\d+)?'         # Weight        (ignored, optional)
-    r'(?:\s({route_ashops}+))?'  # AS path       (group 5, optional)
-    r'\s({route_origin}{{1}})'   # Route origin  (group 6, required)
-    r''.format(route_status=ROUTE_STATUS, route_ashops=ROUTE_ASHOPS, route_origin=ROUTE_ORIGIN)
+    r'^\s{{0,1}}[{route_status}]{{0,{route_status_len}}}\s+'  # Route status  (ignored, required)
+    r'(\S+)?\s+'                                              # Prefix        (group 1, optional)
+    r'(\S+)\s+'                                               # Next hop      (group 2, required)
+    r'\s{{1,7}}(\d+)?'                                        # MED metric    (group 3, optional)
+    r'\s{{1,7}}(\d+)?'                                        # Local-pref    (group 4, optional)
+    r'\s{{1,7}}(?:\d+)?'                                      # Weight        (ignored, optional)
+    r'(?:\s({route_ashops}+))?'                               # AS path       (group 5, optional)
+    r'\s([{route_origin}]{{1}})'                              # Route origin  (group 6, required)
+    r''.format(route_status=ROUTE_STATUS, route_status_len=len(ROUTE_STATUS), route_ashops=ROUTE_ASHOPS,
+               route_origin=ROUTE_ORIGIN)
 )
 ROUTE_REGEX_ALT = re.compile(
-    r'^{route_status}{{2}}'        # Route status  (ignored, required)
-    r'(?:\S)?\s{{1,2}}'            # P (unknown)   (ignored, optional)
-    r'\s{{1,3}}(\d+)?'             # Local-pref    (group 1, optional)
-    r'\s+\d{{2}}:\d{{2}}:\d{{2}}'  # Timestamp     (ignored, required)
-    r'\s+(\S+)\s+'                 # Prefix        (group 2, required)
-    r'(\S+)\s+'                    # Next hop      (group 3, required)
-    r'(?:\S+)?\s+'                 # Interface     (ignored, optional)
-    r'(?:\s({route_ashops}+))?'    # AS path       (group 4, optional)
-    r'\s({route_origin}{{1}})'     # Route origin  (group 5, required)
-    r''.format(route_status=ROUTE_STATUS_ALT, route_ashops=ROUTE_ASHOPS, route_origin=ROUTE_ORIGIN_ALT)
+    r'^\s{{0,1}}[{route_status}]{{0,{route_status_len}}}\s+'  # Route status  (ignored, required)
+    r'(?:\S)?\s{{1,2}}'                                       # P (unknown)   (ignored, optional)
+    r'\s{{1,3}}(\d+)?'                                        # Local-pref    (group 1, optional)
+    r'\s+\d{{2}}:\d{{2}}:\d{{2}}'                             # Timestamp     (ignored, required)
+    r'\s+(\S+)\s+'                                            # Prefix        (group 2, required)
+    r'(\S+)\s+'                                               # Next hop      (group 3, required)
+    r'(?:\S+)?\s+'                                            # Interface     (ignored, optional)
+    r'(?:\s({route_ashops}+))?'                               # AS path       (group 4, optional)
+    r'\s([{route_origin}]{{1}})'                              # Route origin  (group 5, required)
+    r''.format(route_status=ROUTE_STATUS_ALT, route_status_len=len(ROUTE_STATUS_ALT), route_ashops=ROUTE_ASHOPS,
+               route_origin=ROUTE_ORIGIN_ALT)
 )
 
 # Totals regex
 ROUTE_TOTAL1_REGEX = re.compile(r'^Displayed\s+(\d+) routes and\s+(\d+) total paths$')
 ROUTE_TOTAL2_REGEX = re.compile(r'^Total number of prefixes (\d+)$')
 ROUTE_HEADER_REGEX = re.compile(r'^View \S+ \S+ (\d+) routes$')
+
+# Multilines
+ROUTE_MAX_MULTILINE_LEN = 3
 
 
 @FtlParserFunc(text_input='utf-8')
@@ -150,7 +155,7 @@ def unpack_lgl_data(inputfile, caches, stats_record, bgp_records, bgp_error):
     # ------------------------
     # BGP table version is 147996423, local router ID is 74.80.112.4, vrf id 0
     # Default local pref 100, local AS 3856
-    # Status codes:  s suppressed, d damped, h history, * valid, > best, = multipath,
+    # Status codes:  s suppressed, d damped, h history, u unsorted, * valid, > best, = multipath,
     #                i internal, r RIB-failure, S Stale, R Removed
     # Nexthop codes: @NNN nexthop's vrf id, < announce-nh-self
     # Origin codes:  i - IGP, e - EGP, ? - incomplete
@@ -304,7 +309,7 @@ def unpack_lgl_data(inputfile, caches, stats_record, bgp_records, bgp_error):
 
         # Initialize route record and parser state
         route_record_prefix, route_record_proto, last_prefix = None, None, None
-        multiline = ''
+        multiline, multiline_len = '', 0
 
         # Prepare regex
         route_regex = ROUTE_REGEX
@@ -314,16 +319,18 @@ def unpack_lgl_data(inputfile, caches, stats_record, bgp_records, bgp_error):
         # Iterate input lines
         for line in inputfile:
 
-            # Skip empty lines
+            # Update multiline
             line = line.rstrip()  # pylint: disable=redefined-loop-name
-            if len(line) == 0:
+            multiline += line
+            multiline_len += 1
+
+            # Skip empty lines
+            if len(line) == 0 or multiline_len > ROUTE_MAX_MULTILINE_LEN:
                 route_record_prefix = None
                 route_record_proto = None
                 multiline = ''
+                multiline_len = 0
                 continue
-
-            # Update multiline
-            multiline += line
 
             # Parse multiline route (with or without prefix)
             match = route_regex.match(multiline)
@@ -331,6 +338,7 @@ def unpack_lgl_data(inputfile, caches, stats_record, bgp_records, bgp_error):
 
                 # Reset parser state
                 multiline = ''
+                multiline_len = 0
 
                 # Extract route details
                 prefix, nexthop_ip, med, locpref, aspath, origin = None, None, None, None, None, None
@@ -387,6 +395,7 @@ def unpack_lgl_data(inputfile, caches, stats_record, bgp_records, bgp_error):
 
                         # Reset parser state
                         multiline = ''
+                        multiline_len = 0
                         continue
 
                     # Clone route record (filled with header data)
@@ -476,6 +485,7 @@ def unpack_lgl_data(inputfile, caches, stats_record, bgp_records, bgp_error):
                     route_record_prefix = None
                     route_record_proto = None
                     multiline = ''
+                    multiline_len = 0
                     continue
 
                 # Extract MED metric
@@ -498,6 +508,7 @@ def unpack_lgl_data(inputfile, caches, stats_record, bgp_records, bgp_error):
                     route_record_prefix = None
                     route_record_proto = None
                     multiline = ''
+                    multiline_len = 0
                     continue
 
                 # Extract local pref
@@ -520,6 +531,7 @@ def unpack_lgl_data(inputfile, caches, stats_record, bgp_records, bgp_error):
                     route_record_prefix = None
                     route_record_proto = None
                     multiline = ''
+                    multiline_len = 0
                     continue
 
                 # Extract AS path
@@ -543,6 +555,7 @@ def unpack_lgl_data(inputfile, caches, stats_record, bgp_records, bgp_error):
                     route_record_prefix = None
                     route_record_proto = None
                     multiline = ''
+                    multiline_len = 0
                     continue
 
                 # Add origin to route record
