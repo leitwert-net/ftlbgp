@@ -21,7 +21,6 @@ classifiers = [
 readme = "README.md"
 requires-python = ">=3.6"
 dynamic = ["version"]
-license = "MIT"
 license-files = []
 
 [project.urls]
