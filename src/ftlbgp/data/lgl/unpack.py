@@ -15,6 +15,7 @@ Author Johann SCHLAMP <schlamp@leitwert.net>
 import re
 
 # Local imports
+from .table import check_lgl_table
 from ..const import IPV4
 from ..const import IPV6
 from ..const import IPV4_STR
@@ -82,50 +83,12 @@ HEADER_PEER_AS = 'local AS'
 HEADER_PEER_BGP_ID = 'local router ID is'
 HEADER_LOCAL_PREF = 'Default local pref'
 
-# Header regex
-HEADER_REGEX = re.compile(r'^\s+Network\s+Next Hop\s+Metric\s+LocPrf\s+Weight\s+Path\s*$')
-HEADER_REGEX_ALT = re.compile(r'^\s+P\s+Pref\s+Time\s+Destination\s+Next Hop\s+If\s+Path\s*$')
-
-# Route parts
-ROUTE_ASHOPS = r'(?:(?:\d+\s?)|(?:{(?:\d+,?)+}\s?))'
-ROUTE_STATUS = 'sdhu*>=irSR'
-ROUTE_ORIGIN = 'ie?'
-ROUTE_STATUS_ALT = 's*>i'
-ROUTE_ORIGIN_ALT = 'ie?a'
-
-# Route regex
-ROUTE_REGEX = re.compile(
-    r'^\s{{0,1}}[{route_status}]{{0,{route_status_len}}}\s+'  # Route status  (ignored, required)
-    r'(\S+)?\s+'                                              # Prefix        (group 1, optional)
-    r'(\S+)\s+'                                               # Next hop      (group 2, required)
-    r'\s{{1,7}}(\d+)?'                                        # MED metric    (group 3, optional)
-    r'\s{{1,7}}(\d+)?'                                        # Local-pref    (group 4, optional)
-    r'\s{{1,7}}(?:\d+)?'                                      # Weight        (ignored, optional)
-    r'(?:\s({route_ashops}+))?'                               # AS path       (group 5, optional)
-    r'\s([{route_origin}]{{1}})'                              # Route origin  (group 6, required)
-    r''.format(route_status=ROUTE_STATUS, route_status_len=len(ROUTE_STATUS), route_ashops=ROUTE_ASHOPS,
-               route_origin=ROUTE_ORIGIN)
-)
-ROUTE_REGEX_ALT = re.compile(
-    r'^\s{{0,1}}[{route_status}]{{0,{route_status_len}}}\s+'  # Route status  (ignored, required)
-    r'(?:\S)?\s{{1,2}}'                                       # P (unknown)   (ignored, optional)
-    r'\s{{1,3}}(\d+)?'                                        # Local-pref    (group 1, optional)
-    r'\s+\d{{2}}:\d{{2}}:\d{{2}}'                             # Timestamp     (ignored, required)
-    r'\s+(\S+)\s+'                                            # Prefix        (group 2, required)
-    r'(\S+)\s+'                                               # Next hop      (group 3, required)
-    r'(?:\S+)?\s+'                                            # Interface     (ignored, optional)
-    r'(?:\s({route_ashops}+))?'                               # AS path       (group 4, optional)
-    r'\s([{route_origin}]{{1}})'                              # Route origin  (group 5, required)
-    r''.format(route_status=ROUTE_STATUS_ALT, route_status_len=len(ROUTE_STATUS_ALT), route_ashops=ROUTE_ASHOPS,
-               route_origin=ROUTE_ORIGIN_ALT)
-)
-
-# Totals regex
+# Route totals regex
 ROUTE_TOTAL1_REGEX = re.compile(r'^Displayed\s+(\d+) routes and\s+(\d+) total paths$')
 ROUTE_TOTAL2_REGEX = re.compile(r'^Total number of prefixes (\d+)$')
 ROUTE_HEADER_REGEX = re.compile(r'^View \S+ \S+ (\d+) routes$')
 
-# Multilines
+# Multiline routes
 ROUTE_MAX_MULTILINE_LEN = 3
 
 
@@ -176,8 +139,6 @@ def unpack_lgl_data(inputfile, caches, stats_record, bgp_records, bgp_error):
 
     try:
         # Prepare dump status
-        alt_mode = False
-        dump_valid = False
         header_errors = list()
 
         # Prepare details
@@ -245,14 +206,8 @@ def unpack_lgl_data(inputfile, caches, stats_record, bgp_records, bgp_error):
                                               reason=FTL_ATTR_BGP_ERROR_REASON_INVALID_IP, data=line, exception=exc)))
 
                 # Check for valid table start
-                if HEADER_REGEX.match(line) is not None:
-                    dump_valid = True
-                    break
-
-                # Check for alternative table start (early RIPE RIS)
-                if HEADER_REGEX_ALT.match(line) is not None:
-                    alt_mode = True
-                    dump_valid = True
+                unpack_lgl_entry = check_lgl_table(line)
+                if unpack_lgl_entry is not None:
                     break
 
         # Always raise critical file reading errors
@@ -261,7 +216,7 @@ def unpack_lgl_data(inputfile, caches, stats_record, bgp_records, bgp_error):
             raise FtlLglHeaderError('Unknown lgl format', data=line, exception=exc)
 
         # Always raise critical header errors
-        if dump_valid is False:
+        if unpack_lgl_entry is None:
             raise FtlLglHeaderError('No BGP table found', data=line)
 
         # Yield (or re-raise) remaining header errors
@@ -289,32 +244,12 @@ def unpack_lgl_data(inputfile, caches, stats_record, bgp_records, bgp_error):
         # BGP TABLE #
         #############
 
-        # ------------------------
-        # [PCH] % sh bgp ipv4 wide
-        # ------------------------
-        #    Network          Next Hop            Metric LocPrf Weight Path
-        # *  1.0.0.0/24       206.126.236.19           0             0 3257 13335 i
-        # *>                  206.126.237.30           0             0 13335 i
-        # *> 1.0.16.0/24      206.126.236.23           0             0 2497 2519 i
-
-        # -------------------------
-        # [RIPE] % sh bgp ipv4 wide
-        # -------------------------
-        #   P Pref Time     Destination                Next Hop                 If      Path
-        # > B    0 11:53:59 3.0.0.0/8                  193.0.0.56               eth0    3333 286 701 80 i
-        # * B    0 11:53:46 3.0.0.0/8                  193.0.0.59               eth0    3333 286 701 80 i
-
         # Prepare record parser
         n_routes4, n_routes6, n_prefixes = 0, 0, 0
 
         # Initialize route record and parser state
         route_record_prefix, route_record_proto, last_prefix = None, None, None
         multiline, multiline_len = '', 0
-
-        # Prepare regex
-        route_regex = ROUTE_REGEX
-        if alt_mode is True:
-            route_regex = ROUTE_REGEX_ALT
 
         # Iterate input lines
         for line in inputfile:
@@ -326,33 +261,31 @@ def unpack_lgl_data(inputfile, caches, stats_record, bgp_records, bgp_error):
 
             # Skip empty lines
             if len(line) == 0 or multiline_len > ROUTE_MAX_MULTILINE_LEN:
+                if len(line) > 0:
+                    print('?', multiline)
                 route_record_prefix = None
                 route_record_proto = None
                 multiline = ''
                 multiline_len = 0
                 continue
 
-            # Parse multiline route (with or without prefix)
-            match = route_regex.match(multiline)
-            if match is not None:
+            # Parse multiline entry (with or without prefix)
+            entry = unpack_lgl_entry(multiline)
+            if entry is not None:
+
+                # Extract route details
+                prefix, nexthop_ip, med, locpref, aspath, origin = entry
 
                 # Reset parser state
                 multiline = ''
                 multiline_len = 0
-
-                # Extract route details
-                prefix, nexthop_ip, med, locpref, aspath, origin = None, None, None, None, None, None
-                if alt_mode is False:
-                    prefix, nexthop_ip, med, locpref, aspath, origin = match.groups()
-                else:
-                    locpref, prefix, nexthop_ip, aspath, origin = match.groups()
 
                 ##############
                 # BGP PREFIX #
                 ##############
 
                 # Extract prefix
-                if prefix is not None:
+                if prefix != '':
 
                     # Reset route record
                     route_record_prefix = None
@@ -490,7 +423,7 @@ def unpack_lgl_data(inputfile, caches, stats_record, bgp_records, bgp_error):
 
                 # Extract MED metric
                 try:
-                    if med is not None:
+                    if med != '':
                         med_int = int(med)
 
                         # Add MED metric to route record
@@ -513,7 +446,7 @@ def unpack_lgl_data(inputfile, caches, stats_record, bgp_records, bgp_error):
 
                 # Extract local pref
                 try:
-                    if locpref is not None:
+                    if locpref != '':
                         locpref_int = int(locpref)
 
                         # Add local_pref to route record
@@ -536,7 +469,7 @@ def unpack_lgl_data(inputfile, caches, stats_record, bgp_records, bgp_error):
 
                 # Extract AS path
                 try:
-                    aspath = (tuple() if aspath is None else
+                    aspath = (tuple() if aspath == '' else
                               tuple(tuple(sorted(set(int(y) for y in x[1:-1].split(',') if len(y) > 0)))
                                     if x[0] == '{' else int(x) for x in aspath.split()))
 
