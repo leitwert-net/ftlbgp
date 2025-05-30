@@ -301,7 +301,7 @@ Johann SCHLAMP <[schlamp@leitwert.net](mailto:schlamp@leitwert.net)>
 
 ## License
 
-Copyright (C) 2014-2024 Leitwert GmbH
+Copyright (C) 2014-2025 Leitwert GmbH
 
 This software is distributed under the terms of the MIT license.    
 It can be found in the LICENSE file or at [https://opensource.org/licenses/MIT](https://opensource.org/licenses/MIT).
